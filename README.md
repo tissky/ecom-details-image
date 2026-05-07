@@ -31,7 +31,7 @@
 
 ### 前置要求
 
-- [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) 已安装并登录
+- [Claude Code CLI / codex等] 已安装并登录
 - Python 3.10+
 - OpenAI 兼容图片生成 API（如 OpenAI、Azure OpenAI 或第三方兼容服务）
 
