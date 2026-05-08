@@ -52,32 +52,43 @@
 
 ## API 配置
 
-这个 Skill 不内置任何 API，也不共享任何密钥。每个使用者都需要配置自己的 OpenAI 兼容图片 API。
+这个 Skill 不内置任何 API，也不共享任何密钥。当前默认使用 [apimart.ai](https://apimart.ai) 图像生成接口（GPT-Image-2），采用异步轮询模式。
 
-在项目根目录创建 `.env`：
+在 `.claude/skills/ecom-details-image/` 目录下创建 `.env`：
 
 ```dotenv
-IMG_BASE_URL=https://api.openai.com/v1
-IMG_MODEL=gpt-image-1.5
+IMG_BASE_URL=https://api.apimart.ai/v1
+IMG_MODEL=gpt-image-2
 IMG_API_KEY=你的APIKey
 ```
 
 变量说明：
 
-- `IMG_BASE_URL`：API 根地址，例如 `https://api.openai.com/v1`。
-- `IMG_MODEL`：图片模型名，例如 `gpt-image-1.5`，也可以是兼容服务提供的模型名。
-- `IMG_API_KEY`：使用者自己的 API key。
+- `IMG_BASE_URL`：API 根地址，默认 `https://api.apimart.ai/v1`。
+- `IMG_MODEL`：图片模型名，固定 `gpt-image-2`。
+- `IMG_API_KEY`：使用者在 [apimart.ai/keys](https://apimart.ai/keys) 获取的 API key。
 
 脚本也兼容常见别名：`OPENAI_BASE_URL`、`OPENAI_API_BASE`、`OPENAI_IMAGE_MODEL`、`OPENAI_MODEL`、`OPENAI_API_KEY`。
 
 不要把真实 API key 写进 README、`SKILL.md`、脚本、Git 提交或聊天记录。
+
+### 异步轮询机制
+
+apimart.ai 图像生成采用异步处理模式：
+
+1. 提交任务 → 返回 `task_id`
+2. 等待 15 秒后开始轮询 `GET /v1/tasks/{task_id}`
+3. 每 5 秒查询一次，通常 30–60 秒完成
+4. 任务完成后从返回的图片 URL 下载到本地
+
+单张图费用约 $0.05（2K 分辨率），失败不扣费。
 
 ## 生图脚本用法
 
 直接传入 Prompt：
 
 ```bash
-python3 scripts/generate_image.py --prompt "clean product hero image, premium studio lighting, white background" --size 1024x1024
+python3 scripts/generate_image.py --prompt "clean product hero image, premium studio lighting, white background" --size 1:1
 ```
 
 从文件读取 Prompt：
@@ -86,16 +97,23 @@ python3 scripts/generate_image.py --prompt "clean product hero image, premium st
 python3 scripts/generate_image.py --prompt-file prompt.txt --output-dir outputs
 ```
 
+带参考产品图（图生图模式）：
+
+```bash
+python3 scripts/generate_image.py --prompt "..." --size 1:1 --image data/product.jpg --resolution 2k
+```
+
 更多参数：
 
 ```bash
 python3 scripts/generate_image.py \
   --prompt-file prompt.txt \
   --output-dir generated-images \
-  --size 1024x1024 \
-  --quality high \
-  --format png \
-  --n 1
+  --size 4:5 \
+  --resolution 2k \
+  --image data/product.jpg \
+  --poll-interval 5 \
+  --timeout 180
 ```
 
 指定其它 `.env` 文件：
@@ -104,16 +122,36 @@ python3 scripts/generate_image.py \
 python3 scripts/generate_image.py --env-file .env --prompt-file prompt.txt
 ```
 
-脚本支持：
+脚本参数：
 
 - `--prompt`：直接传入 Prompt。
 - `--prompt-file`：从文本文件读取 Prompt。
 - `--output-dir`：输出目录，默认 `generated-images/`。
 - `--env-file`：指定 `.env` 配置文件；不指定时从当前目录向上查找 `.env`。
-- `--size`：图片尺寸，默认 `1024x1024`。
-- `--quality`：图片质量参数，例如 `low`、`medium`、`high`。
-- `--format`：期望图片格式，支持 `png`、`jpeg`、`webp`，默认 `png`。
-- `--n`：生成图片数量，默认 `1`。
+- `--size`：图片比例，默认 `1:1`。可选值：`auto`、`1:1`、`3:2`、`2:3`、`4:3`、`3:4`、`5:4`、`4:5`、`16:9`、`9:16`、`2:1`、`1:2`、`21:9`、`9:21`。
+- `--resolution`：输出分辨率档位，默认 `2k`。可选值：`1k`、`2k`、`4k`（4K 仅支持 6 个宽幅比例）。
+- `--image`：参考产品图片路径，传入后走图生图模式，提升产品一致性。
+- `--poll-interval`：轮询间隔秒数，默认 `5`。
+- `--timeout`：轮询超时秒数，默认 `180`。
+- `--format`：图片保存格式，仅影响文件扩展名，默认 `png`。
+
+### 支持的图片比例与分辨率
+
+| size | 1K | 2K | 4K |
+|---|---|---|---|
+| `1:1` | 1024×1024 | 2048×2048 | — |
+| `3:2` | 1536×1024 | 2048×1360 | — |
+| `2:3` | 1024×1536 | 1360×2048 | — |
+| `4:3` | 1024×768 | 2048×1536 | — |
+| `3:4` | 768×1024 | 1536×2048 | — |
+| `5:4` | 1280×1024 | 2560×2048 | — |
+| `4:5` | 1024×1280 | 2048×2560 | — |
+| `16:9` | 1536×864 | 2048×1152 | 3840×2160 |
+| `9:16` | 864×1536 | 1152×2048 | 2160×3840 |
+| `2:1` | 2048×1024 | 2688×1344 | 3840×1920 |
+| `1:2` | 1024×2048 | 1344×2688 | 1920×3840 |
+| `21:9` | 2016×864 | 2688×1152 | 3840×1648 |
+| `9:21` | 864×2016 | 1152×2688 | 1648×3840 |
 
 脚本只使用 Python 标准库，不需要安装第三方依赖。
 
@@ -123,8 +161,8 @@ python3 scripts/generate_image.py --env-file .env --prompt-file prompt.txt
 
 - 5 张主图：首图卖点、机制/功能、利益证明、对比或场景、优惠/保障。
 - 7-9 张详情页图片：首屏承接、痛点放大、机制解释、核心利益、使用步骤、场景覆盖、对比选择、信任背书、FAQ/风险逆转/CTA。
-- 主图默认 `1024x1024`。
-- 详情页图片默认 `1024x1536`，适合移动端纵向浏览。
+- 主图默认 `1:1`（2K = 2048×2048）。
+- 详情页图片默认 `2:3`（2K = 1360×2048），适合移动端纵向浏览。
 - 每张图都使用独立 Prompt 文件，避免把多屏详情页挤在一张拼图里。
 
 如果没有真实证据，Skill 只允许使用占位式证明表达，不编造认证、实验数据、评分、销量或真实评价。
@@ -215,10 +253,11 @@ Campaign Style Lock: consistent premium ecommerce visual system across the entir
 
 ## 局限性
 
-- 当前只支持文本生图，不支持图片编辑、参考图生图或局部重绘。
-- 需要 OpenAI 兼容的 Images API；非兼容服务需要额外适配。
-- 不同服务商对 `size`、`quality`、`format`、`n` 的支持可能不同。
-- 生图质量、速度和费用取决于使用者选择的模型和服务商。
+- apimart.ai 采用异步轮询模式，单张图通常 30–60 秒完成。
+- 4K 分辨率仅支持 6 个宽幅比例（`16:9`、`9:16`、`2:1`、`1:2`、`21:9`、`9:21`）。
+- 参考图最多 16 张，支持 URL 与 base64 混填。
+- 生图质量、速度和费用取决于所选分辨率档位（1K / 2K / 4K）。
+- 图片结果 URL 有效期 24 小时，脚本会自动下载到本地。
 - 商品营销图中的效果承诺必须有证据支持；不要让图片文案虚构资质、认证或结果。
 
 ## 推荐工作流

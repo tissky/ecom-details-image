@@ -18,11 +18,11 @@ description: Create visual concepts, image-generation prompts, and optional AI-g
 
 ## 生图配置
 
-直接生图使用 OpenAI 兼容 Images API。优先在项目根目录放 `.env`，不要把真实 API key 写进仓库：
+直接生图使用 apimart.ai 图像生成接口（GPT-Image-2，异步轮询模式）。优先在 `.claude/skills/ecom-details-image/` 放 `.env`，不要把真实 API key 写进仓库：
 
 ```dotenv
-IMG_BASE_URL=https://api.openai.com/v1
-IMG_MODEL=gpt-image-1.5
+IMG_BASE_URL=https://api.apimart.ai/v1
+IMG_MODEL=gpt-image-2
 IMG_API_KEY=your-api-key
 ```
 
@@ -31,7 +31,7 @@ IMG_API_KEY=your-api-key
 生图脚本：
 
 ```bash
-python3 scripts/generate_image.py --prompt "clean product hero image..." --size 1024x1024
+python3 scripts/generate_image.py --prompt "clean product hero image..." --size 1:1 --resolution 2k
 python3 scripts/generate_image.py --prompt-file prompt.txt --output-dir outputs
 python3 scripts/generate_image.py --env-file .env --prompt-file prompt.txt
 ```
@@ -286,7 +286,7 @@ Campaign Style Lock: consistent premium ecommerce visual system across the entir
 
 ## 详情页图片序列模板
 
-详情页图片用于移动端纵向浏览，默认每张图独立成屏，尺寸优先使用 `1024x1536` 或平台指定竖版比例。除非用户明确只要文案，否则每个模块都要输出对应图片 Prompt。
+详情页图片用于移动端纵向浏览，默认每张图独立成屏，尺寸优先使用 `2:3` 或平台指定竖版比例。除非用户明确只要文案，否则每个模块都要输出对应图片 Prompt。
 
 ### 通用 PDP 详情页图片序列
 
@@ -321,7 +321,7 @@ Campaign Style Lock: consistent premium ecommerce visual system across the entir
 
 1. 先建立 Campaign Style Lock，并写入图片包计划。
 2. 再为每张图建立编号、用途、画幅、图片内短文案和独立 Prompt。
-3. 主图默认 `1024x1024`；详情页图片默认 `1024x1536`。
+3. 主图默认 `1:1`（2K）；详情页图片默认 `2:3`（2K）。
 4. 每张图使用独立 Prompt 文件，避免一次 Prompt 生成多屏拼图。
 5. 每张独立 Prompt 必须以同一段 Campaign Style Lock 开头。
 6. 输出目录用产品英文 slug，例如 `generated-images/laundry-detergent-pods-pdp/`。
@@ -337,14 +337,15 @@ Campaign Style Lock: consistent premium ecommerce visual system across the entir
 
 1. 先输出最终 Prompt。
 2. 短 Prompt 用 `--prompt`，长 Prompt 用 `--prompt-file`。
-3. 根据平台选择 `--size`，没有要求时默认 `1024x1024`。
-4. 只有用户指定目录时才使用 `--output-dir`，否则使用 `generated-images/`。
-5. 如果缺少 `IMG_API_KEY` 等配置，不要调用脚本；返回 Prompt 和配置命令示例。
+3. 根据平台选择 `--size`（比例格式），没有要求时默认 `1:1`。
+4. `--resolution` 默认 `2k`，4K 仅限 6 个宽幅比例。
+5. 只有用户指定目录时才使用 `--output-dir`，否则使用 `generated-images/`。
+6. 如果缺少 `IMG_API_KEY` 等配置，不要调用脚本；返回 Prompt 和配置命令示例。
 
 命令形状：
 
 ```bash
-python3 scripts/generate_image.py --prompt "..." --size 1024x1024
+python3 scripts/generate_image.py --prompt "..." --size 1:1 --resolution 2k
 ```
 
 脚本支持：
@@ -352,10 +353,12 @@ python3 scripts/generate_image.py --prompt "..." --size 1024x1024
 - `--prompt`
 - `--prompt-file`
 - `--output-dir`
-- `--size`
-- `--quality`
-- `--format`
-- `--n`
+- `--size`：比例格式（`1:1`、`16:9`、`2:3`、`4:5` 等 14 种）
+- `--resolution`：`1k` / `2k` / `4k`，默认 `2k`
+- `--image`：参考产品图片路径
+- `--poll-interval`：轮询间隔秒数，默认 `5`
+- `--timeout`：轮询超时秒数，默认 `180`
+- `--format`：保存格式（仅影响扩展名），默认 `png`
 
 ---
 

@@ -1,17 +1,16 @@
 #!/usr/bin/env python3
-"""使用 OpenAI 兼容图片接口生成图片。
+"""使用 apimart.ai 图像生成接口生成图片（异步轮询模式）。
 
 配置来自环境变量或项目根目录 `.env`：
-- IMG_BASE_URL: API 根地址，例如 https://api.openai.com/v1
-- IMG_MODEL: 图片模型名，例如 gpt-image-1.5
-- IMG_API_KEY: 使用者自己的 API key
+- IMG_BASE_URL: API 根地址，例如 https://api.apimart.ai/v1
+- IMG_MODEL: 图片模型名，例如 gpt-image-2
+- IMG_API_KEY: API key
 """
 
 from __future__ import annotations
 
 import argparse
 import base64
-import binascii
 import http.client
 import json
 import os
@@ -33,6 +32,10 @@ ENV_ALIASES = {
     ENV_API_KEY: ("OPENAI_API_KEY", "API_KEY"),
 }
 
+VALID_SIZES = ("auto", "1:1", "3:2", "2:3", "4:3", "3:4", "5:4", "4:5",
+               "16:9", "9:16", "2:1", "1:2", "21:9", "9:21")
+VALID_RESOLUTIONS = ("1k", "2k", "4k")
+
 
 def fail(message: str, exit_code: int = 1) -> None:
     print(f"错误：{message}", file=sys.stderr)
@@ -47,7 +50,6 @@ def read_prompt(args: argparse.Namespace) -> str:
             prompt = Path(args.prompt_file).read_text(encoding="utf-8").strip()
         except OSError as exc:
             fail(f"无法读取 prompt 文件：{exc}")
-
     if not prompt:
         fail("prompt 不能为空。")
     return prompt
@@ -75,7 +77,6 @@ def load_env_file(env_file: Path | None) -> None:
         lines = env_file.read_text(encoding="utf-8").splitlines()
     except OSError as exc:
         fail(f"无法读取 .env 文件：{exc}")
-
     for line_number, raw_line in enumerate(lines, start=1):
         line = raw_line.strip()
         if not line or line.startswith("#"):
@@ -94,54 +95,50 @@ def load_env_file(env_file: Path | None) -> None:
 
 def require_config(name: str) -> str:
     candidates = (name, *ENV_ALIASES.get(name, ()))
+    value = ""
     for candidate in candidates:
         value = os.environ.get(candidate, "").strip()
         if value:
             return value
-
     accepted = "、".join(candidates)
-    if not value:
-        fail(
-            f"缺少配置 {name}。请在 .env 中设置 IMG_BASE_URL、IMG_MODEL、IMG_API_KEY；"
-            f"也兼容这些变量名：{accepted}。"
-        )
-    return value
+    fail(
+        f"缺少配置 {name}。请在 .env 中设置 IMG_BASE_URL、IMG_MODEL、IMG_API_KEY；"
+        f"也兼容这些变量名：{accepted}。"
+    )
 
 
-def encode_image_file(image_path: str) -> dict[str, str]:
+def encode_image_as_data_uri(image_path: str) -> str:
     path = Path(image_path)
     if not path.is_file():
         fail(f"参考图片不存在：{image_path}")
     suffix = path.suffix.lower().lstrip(".")
-    mime_map = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "webp": "image/webp", "gif": "image/gif"}
+    mime_map = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg",
+                "webp": "image/webp", "gif": "image/gif"}
     mime = mime_map.get(suffix)
     if not mime:
-        fail(f"不支持的图片格式：.{suffix}，仅支持 png/jpg/jpeg/webp。")
+        fail(f"不支持的图片格式：.{suffix}，仅支持 png/jpg/jpeg/webp/gif。")
     try:
         data = path.read_bytes()
     except OSError as exc:
         fail(f"无法读取参考图片：{exc}")
-    return {"type": mime, "data": base64.b64encode(data).decode("ascii")}
+    b64 = base64.b64encode(data).decode("ascii")
+    return f"data:{mime};base64,{b64}"
 
 
 def build_payload(args: argparse.Namespace, prompt: str, model: str) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "model": model,
         "prompt": prompt,
-        "n": args.n,
+        "n": 1,
         "size": args.size,
+        "resolution": args.resolution,
     }
-    if args.quality:
-        payload["quality"] = args.quality
-    if args.format:
-        # OpenAI 兼容服务通常使用 output_format 控制返回图片格式。
-        payload["output_format"] = args.format
     if args.image:
-        payload["image"] = encode_image_file(args.image)
+        payload["image_urls"] = [encode_image_as_data_uri(args.image)]
     return payload
 
 
-def post_json(url: str, api_key: str, payload: dict[str, Any]) -> dict[str, Any]:
+def http_post(url: str, api_key: str, payload: dict[str, Any]) -> dict[str, Any]:
     body = json.dumps(payload).encode("utf-8")
     request = urllib.request.Request(
         url,
@@ -149,110 +146,144 @@ def post_json(url: str, api_key: str, payload: dict[str, Any]) -> dict[str, Any]
         headers={
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
         },
         method="POST",
     )
-
     try:
-        with urllib.request.urlopen(request, timeout=120) as response:
+        with urllib.request.urlopen(request, timeout=30) as response:
             raw = response.read().decode("utf-8")
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")
-        fail(f"图片接口返回 HTTP {exc.code}：{detail}")
+        fail(f"接口返回 HTTP {exc.code}：{detail}")
     except urllib.error.URLError as exc:
-        fail(f"无法连接图片接口：{exc.reason}")
-    except http.client.RemoteDisconnected:
-        fail("图片接口远端断开连接，请稍后重试。")
-    except TimeoutError:
-        fail("图片接口请求超时。")
-
+        fail(f"无法连接接口：{exc.reason}")
+    except (http.client.RemoteDisconnected, TimeoutError):
+        fail("接口连接失败或超时，请稍后重试。")
     try:
         parsed = json.loads(raw)
     except json.JSONDecodeError:
-        fail(f"图片接口返回的不是有效 JSON：{raw[:500]}")
-
+        fail(f"接口返回的不是有效 JSON：{raw[:500]}")
     if not isinstance(parsed, dict):
-        fail("图片接口返回格式不正确：顶层结果不是对象。")
+        fail("接口返回格式不正确：顶层结果不是对象。")
     return parsed
 
 
-def filename_for(index: int, suffix: str) -> str:
-    timestamp = time.strftime("%Y%m%d-%H%M%S")
-    return f"image-{timestamp}-{index + 1:02d}.{suffix.lstrip('.')}"
-
-
-def suffix_from_url(url: str, fallback: str) -> str:
-    path = urllib.parse.urlparse(url).path
-    suffix = Path(path).suffix.lower().lstrip(".")
-    if suffix in {"png", "jpg", "jpeg", "webp"}:
-        return "jpg" if suffix == "jpeg" else suffix
-    return fallback
-
-
-def save_b64_image(item: dict[str, Any], output_dir: Path, index: int, fmt: str) -> Path:
-    encoded = item.get("b64_json")
-    if not isinstance(encoded, str) or not encoded:
-        fail("图片结果缺少 b64_json。")
-
+def http_get(url: str, api_key: str) -> dict[str, Any]:
+    request = urllib.request.Request(
+        url,
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        },
+        method="GET",
+    )
     try:
-        image_bytes = base64.b64decode(encoded)
-    except (binascii.Error, ValueError) as exc:
-        fail(f"无法解码 b64_json 图片：{exc}")
-
-    output_path = output_dir / filename_for(index, fmt)
+        with urllib.request.urlopen(request, timeout=30) as response:
+            raw = response.read().decode("utf-8")
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        fail(f"查询接口返回 HTTP {exc.code}：{detail}")
+    except (urllib.error.URLError, http.client.RemoteDisconnected, TimeoutError):
+        fail("查询接口连接失败或超时。")
     try:
-        output_path.write_bytes(image_bytes)
-    except OSError as exc:
-        fail(f"无法写入图片文件：{exc}")
-    return output_path
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        fail(f"查询接口返回的不是有效 JSON：{raw[:500]}")
+    return parsed
 
 
-def save_url_image(item: dict[str, Any], output_dir: Path, index: int, fmt: str) -> Path:
-    image_url = item.get("url")
-    if not isinstance(image_url, str) or not image_url:
-        fail("图片结果缺少 url。")
-
-    suffix = suffix_from_url(image_url, fmt)
-    output_path = output_dir / filename_for(index, suffix)
-
-    try:
-        with urllib.request.urlopen(image_url, timeout=120) as response:
-            image_bytes = response.read()
-    except urllib.error.URLError as exc:
-        fail(f"无法下载图片 URL：{exc.reason}")
-    except TimeoutError:
-        fail("下载图片超时。")
-
-    try:
-        output_path.write_bytes(image_bytes)
-    except OSError as exc:
-        fail(f"无法写入图片文件：{exc}")
-
-    return output_path
-
-
-def save_images(result: dict[str, Any], output_dir: Path, fmt: str) -> list[Path]:
+def submit_task(base_url: str, api_key: str, payload: dict[str, Any]) -> str:
+    endpoint = f"{base_url}/images/generations"
+    result = http_post(endpoint, api_key, payload)
+    code = result.get("code")
+    if code and code != 200:
+        error = result.get("error", {})
+        fail(f"提交失败（code={code}）：{error.get('message', json.dumps(result))}")
     data = result.get("data")
     if not isinstance(data, list) or not data:
-        fail("图片接口返回中没有 data 图片数组。")
+        fail(f"提交响应缺少 data 数组：{json.dumps(result)[:300]}")
+    task_id = data[0].get("task_id")
+    if not task_id:
+        fail(f"提交响应缺少 task_id：{json.dumps(data[0])[:300]}")
+    return task_id
 
+
+def poll_task(base_url: str, api_key: str, task_id: str,
+              poll_interval: int, timeout: int) -> dict[str, Any]:
+    url = f"{base_url}/tasks/{task_id}"
+    start = time.time()
+    while True:
+        elapsed = time.time() - start
+        if elapsed > timeout:
+            fail(f"任务 {task_id} 超时（{timeout}s），请稍后手动查询。")
+        result = http_get(url, api_key)
+        task_data = result.get("data", {})
+        status = task_data.get("status", "")
+        if status == "completed":
+            return task_data
+        if status == "failed":
+            error = task_data.get("error", {})
+            fail(f"任务 {task_id} 失败：{error.get('message', json.dumps(task_data)[:300])}")
+        progress = task_data.get("progress", 0)
+        print(f"  轮询中... 状态={status} 进度={progress}% 耗时={elapsed:.0f}s",
+              file=sys.stderr)
+        time.sleep(poll_interval)
+
+
+def filename_for(suffix: str) -> str:
+    timestamp = time.strftime("%Y%m%d-%H%M%S")
+    return f"image-{timestamp}-01.{suffix.lstrip('.')}"
+
+
+def suffix_from_url(url: str) -> str:
+    path = urllib.parse.urlparse(url).path
+    suffix = Path(path).suffix.lower().lstrip(".")
+    return "jpg" if suffix == "jpeg" else (suffix if suffix in {"png", "jpg", "webp"} else "png")
+
+
+def download_image(url: str, output_dir: Path, fmt: str) -> Path:
+    suffix = suffix_from_url(url) or fmt
+    output_path = output_dir / filename_for(suffix)
+    print(f"  下载图片: {url}", file=sys.stderr)
+    dl_request = urllib.request.Request(url, headers={
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    })
+    try:
+        with urllib.request.urlopen(dl_request, timeout=120) as response:
+            image_bytes = response.read()
+    except urllib.error.URLError as exc:
+        fail(f"无法下载图片：{exc.reason}")
+    except TimeoutError:
+        fail("下载图片超时。")
+    try:
+        output_path.write_bytes(image_bytes)
+    except OSError as exc:
+        fail(f"无法写入图片文件：{exc}")
+    return output_path
+
+
+def save_results(task_data: dict[str, Any], output_dir: Path, fmt: str) -> list[Path]:
+    result = task_data.get("result", {})
+    images = result.get("images")
+    if not isinstance(images, list) or not images:
+        fail(f"任务结果中缺少 images 数组：{json.dumps(task_data)[:300]}")
     output_dir.mkdir(parents=True, exist_ok=True)
     paths: list[Path] = []
-    for index, item in enumerate(data):
-        if not isinstance(item, dict):
-            fail("图片接口返回格式不正确：data 中包含非对象项目。")
-        if item.get("b64_json"):
-            paths.append(save_b64_image(item, output_dir, index, fmt))
-        elif item.get("url"):
-            paths.append(save_url_image(item, output_dir, index, fmt))
-        else:
-            fail("图片结果既没有 b64_json，也没有 url。")
+    for index, img_item in enumerate(images):
+        url_list = img_item.get("url")
+        if not isinstance(url_list, list) or not url_list:
+            fail(f"图片结果缺少 url 数组：{json.dumps(img_item)[:300]}")
+        image_url = url_list[0]
+        if not isinstance(image_url, str) or not image_url:
+            fail(f"图片 URL 为空：{json.dumps(url_list)[:300]}")
+        paths.append(download_image(image_url, output_dir, fmt))
     return paths
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="使用 IMG_* 环境变量调用 OpenAI 兼容图片接口生成图片。"
+        description="使用 apimart.ai 图像接口生成图片（异步轮询模式）。"
     )
     prompt_group = parser.add_mutually_exclusive_group(required=True)
     prompt_group.add_argument("--prompt", help="直接传入图片生成 Prompt。")
@@ -266,27 +297,42 @@ def parse_args() -> argparse.Namespace:
         "--env-file",
         help="指定 .env 配置文件；不指定时从当前目录向上查找 .env。",
     )
-    parser.add_argument("--size", default="1024x1024", help="图片尺寸，默认 1024x1024。")
-    parser.add_argument("--quality", help="图片质量参数，例如 low、medium、high。")
+    parser.add_argument(
+        "--size",
+        default="1:1",
+        help=f"图片比例，默认 1:1。可选：{', '.join(VALID_SIZES)}",
+    )
+    parser.add_argument(
+        "--resolution",
+        default="2k",
+        choices=VALID_RESOLUTIONS,
+        help="输出分辨率档位，默认 2k。",
+    )
+    parser.add_argument(
+        "--image",
+        help="参考产品图片路径（支持多张，逗号分隔），传入 image_urls 以提升产品一致性。",
+    )
+    parser.add_argument(
+        "--poll-interval",
+        type=int,
+        default=5,
+        help="轮询间隔秒数，默认 5。",
+    )
+    parser.add_argument(
+        "--timeout",
+        type=int,
+        default=180,
+        help="轮询超时秒数，默认 180。",
+    )
     parser.add_argument(
         "--format",
         choices=("png", "jpeg", "webp"),
         default="png",
-        help="期望图片格式，默认 png。",
-    )
-    parser.add_argument(
-        "--n",
-        type=int,
-        default=1,
-        help="生成图片数量，默认 1。",
-    )
-    parser.add_argument(
-        "--image",
-        help="参考产品图片路径，传入 API 以提升产品一致性。",
+        help="图片下载后保存格式（仅影响文件扩展名），默认 png。",
     )
     args = parser.parse_args()
-    if args.n < 1:
-        fail("--n 必须大于等于 1。")
+    if args.size not in VALID_SIZES:
+        fail(f"--size 不合法：{args.size}。可选值：{', '.join(VALID_SIZES)}")
     return args
 
 
@@ -300,10 +346,19 @@ def main() -> None:
     api_key = require_config(ENV_API_KEY)
 
     payload = build_payload(args, prompt, model)
-    endpoint = f"{base_url}/images/generations"
-    result = post_json(endpoint, api_key, payload)
-    paths = save_images(result, Path(args.output_dir), args.format)
 
+    print("提交生成任务...", file=sys.stderr)
+    task_id = submit_task(base_url, api_key, payload)
+    print(f"任务已提交: {task_id}，开始轮询...", file=sys.stderr)
+
+    time.sleep(15)
+    task_data = poll_task(base_url, api_key, task_id, args.poll_interval, args.timeout)
+
+    actual_time = task_data.get("actual_time", 0)
+    cost = task_data.get("cost", 0)
+    print(f"任务完成，耗时 {actual_time}s，费用 ${cost:.4f}", file=sys.stderr)
+
+    paths = save_results(task_data, Path(args.output_dir), args.format)
     print("生成完成：")
     for path in paths:
         print(path)
