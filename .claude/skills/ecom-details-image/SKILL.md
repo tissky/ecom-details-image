@@ -447,6 +447,53 @@ Extreme close-up macro shot. Tight zoom on the [specific detail], showing [textu
 Rear angled view. The [product] photographed from behind at a 45-degree rear angle, revealing [back details not visible from front]. This angle shows construction details not visible from the front.
 ```
 
+### 详情页信息图结构规则（关键！）
+
+**详情页图片 ≠ 多角度产品照片。** 详情页图片必须是电商信息图格式，包含卖点文案、图标、标签、对比、步骤、信任徽章等信息图元素，产品在不同信息图中展示不同角度。多角度是为信息图服务的展示手段，不是目的。
+
+#### 错误做法（只换角度，没有信息图结构）
+
+```
+# 错误：这只是"同一产品换个角度拍"，缺少电商转化元素
+Prompt: Side profile view of the product on white background. Product occupies 38%. Whitespace 50%+.
+```
+
+#### 正确做法（电商信息图 + 多角度产品展示）
+
+```
+# 正确：有标题、卖点图标、标签、信息图布局，产品在其中展示特定角度
+E-commerce infographic benefits screen on #FAF7F2 background.
+Top headline in #2D2D2D at 28pt reading 「Core Benefits」.
+Left side: the product shown from an elevated overhead angle.
+Right side: four benefit rows stacked vertically with thin-line icons:
+  (1) icon + 「Feature One」 in #7A9E7E
+  (2) icon + 「Feature Two」 in #8B6F47
+  (3) icon + 「Feature Three」 in #7A9E7E
+  (4) icon + 「Feature Four」 in #8B6F47
+Clean two-column layout. Product occupies 35%. Whitespace 48%+.
+```
+
+#### 详情页每屏必须包含的信息图元素
+
+| 屏幕 | 电商结构 | 信息图元素 | 产品角度建议 |
+|---|---|---|---|
+| 首屏承接 | 标题 + 产品 + 4个特色图标 + 副标题 | 图标+标签环绕产品 | Front 3/4 |
+| 痛点对比 | 3个痛点图标 → 3个解决方案 + 产品 | 上下对比布局 | Side profile |
+| 核心特色 | 多栏并列展示 + 每栏标签和描述 | 网格/三栏布局 | 各元素独立特写 |
+| 核心利益 | 左产品 + 右利益列表（图标+短文案） | 双栏信息图 | Elevated overhead |
+| 使用步骤 | 4步时间线/编号圆 + 最终成品展示 | 步骤流程图 | Low-angle (最终效果) |
+| 场景覆盖 | 3个场景照片 + 场景标签 | 三行场景卡 | 不同使用环境 |
+| 信任/工艺 | 微距细节图 + 标注圆 + 信任徽章 | 细节标注图 | Macro特写 |
+| CTA/礼品 | 标题 + 产品 + 卖点徽章 + CTA按钮 | 转化闭合布局 | Front 3/4 |
+
+#### 信息图 Prompt 必须包含的要素
+
+1. **布局关键词**：`e-commerce infographic`, `structured grid layout`, `two-column layout`, `three-row layout`, `timeline`, `comparison layout`
+2. **标题和文案**：`headline in #2D2D2D at 28pt reading 「...」`, `label in #7A9E7E at 14pt reading 「...」`
+3. **信息图元素**：`feature callout icons`, `thin connecting lines`, `numbered circles`, `trust badges`, `CTA button placeholder`
+4. **产品角度**：每张信息图中产品从不同角度展示，但角度是为信息图内容服务的
+5. **电商 Prompt 开头**：每张详情页 Prompt 必须以 `E-commerce infographic [screen type]` 开头，而不是 `Close-up shot` 或 `Side view`
+
 ### 字体搭配规则
 
 - 主标题用衬线体（如 Didot），副标题和正文用无衬线体（如 SF Pro Display）。
@@ -519,6 +566,7 @@ python3 scripts/generate_image.py --prompt "..." --size 1:1 --resolution 2k
 - 输出和文件里没有 API key 或私密凭据。
 - 已应用 GPT-Image-2 铁律：hex 颜色、数字占比、显式留白、否定清单、平台预留空间。
 - 多图任务已分配不同角度和景别，无连续 3 张相同角度，全景图占比 ≤ 40%。
+- **详情页图片必须是电商信息图格式**（含标题、图标、标签、利益点、步骤或信任徽章），不是单纯的多角度产品照片。每张详情页 Prompt 以 `E-commerce infographic` 开头。
 - 出图后提醒用户放大 200% 逐字核对中文笔画。
 
 ---
@@ -536,6 +584,7 @@ python3 scripts/generate_image.py --prompt "..." --size 1:1 --resolution 2k
 | 连续多张视觉疲劳 | 背景色全部一样 | 交替使用 2-3 种背景色 |
 | 全套图角度雷同 | AI 默认生成正面 3/4 角度，不指定就千篇一律 | 每张 Prompt 显式写明角度关键词；主图 ≥3 种角度，详情页 ≥4 种，穿插特写/微距 |
 | 衣服/3C 翻车率高 | 对面料垂坠感、人体比例、接口按键细节要求太高 | 优先测护肤品、家居、食品等稳定品类；衣服用参考图 `--image` 提升一致性 |
+| 详情页变成纯产品图 | 只写了多角度关键词，没有电商信息图结构（标题、图标、标签、卖点列表） | 每张详情页 Prompt 以 `E-commerce infographic` 开头，包含布局、文案、图标等电商元素；多角度是信息图内的展示手段而非目的 |
 
 ---
 
