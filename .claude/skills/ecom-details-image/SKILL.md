@@ -392,6 +392,61 @@ Campaign Style Lock: consistent premium ecommerce visual system across the entir
 - 成分解析 / 质地展示：`#F5F1E8`（浅米色）
 - 品牌主视觉 / 促销图：品牌深色（如 `#1A3A2E`）
 
+### 多角度镜头规则（多图任务）
+
+**全套图片绝不能全部使用同一个拍摄角度。** AI 生图默认倾向生成正面 3/4 角度，如果不显式指定镜头角度，整套图会看起来千篇一律。多图任务必须在 Prompt 中为每张图分配不同的镜头角度和景别。
+
+#### 角度清单（按用途选择 4-6 种组合）
+
+| 角度 | Prompt 写法 | 适用场景 |
+|---|---|---|
+| 正面 3/4 | `at a slight 3/4 angle showing full front facade` | 主图、首图 |
+| 正上方俯视 | `photographed directly from above at a 90-degree overhead angle` | 展示布局、内部结构、平铺 |
+| 侧面 90° | `photographed from a clean 90-degree side profile` | 展示深度、层次、侧面细节 |
+| 后侧 45° | `photographed from behind at a 45-degree rear angle` | 展示背面细节、码头、尾部构造 |
+| 仰视低角度 | `photographed from a very low angle looking upward` | 英雄镜头、气势感、儿童视角 |
+| 高角度俯视 | `photographed from a high 45-degree angle looking down` | 展示顶部、整体规模、桌面视角 |
+
+#### 景别清单（按用途选择 2-3 种组合）
+
+| 景别 | Prompt 写法 | 适用场景 |
+|---|---|---|
+| 全景 | `full product visible, product occupies 35-40%` | 主图、场景图 |
+| 中景 | `showing the [section name] area, product occupies 45-50%` | 功能展示、结构说明 |
+| 特写 | `tight zoom on [specific detail], product detail occupies 55-60%` | 材质纹理、工艺细节、按钮/接口 |
+| 微距 | `extreme close-up macro shot, shallow depth of field` | 面料编织、接缝工艺、表面纹理 |
+| 局部 | `close-up detail shot focusing on [specific part]` | 灯塔信标、大炮、拉链、标签 |
+
+#### 多角度分配原则
+
+1. **主图序列（5 张）**：至少使用 3 种不同角度，其中 1 张必须是特写或微距。
+2. **详情页序列（7-9 张）**：至少使用 4 种不同角度，其中 2 张必须是特写/微距。
+3. **不能连续 3 张图使用相同角度**，否则消费者视觉疲劳。
+4. **全景图不超过整套的 40%**，必须穿插中景、特写和微距增加节奏感。
+5. **仰视和俯视各至少 1 张**，打破平视拍摄的单一感。
+6. 每张 Prompt 必须显式写明角度关键词（如 `side profile`、`from above`、`low angle`），不要假设模型会自动变换角度。
+
+#### 角度 Prompt 模板
+
+在每张图片 Prompt 的「构图、镜头和取景」段落中，直接嵌入角度描述：
+
+```text
+# 俯视图
+Bird's eye top-down view. The [product] photographed directly from above at a 90-degree overhead angle, showing the full layout [specific details visible from above]. Deep even lighting from directly above minimizing shadows.
+
+# 侧视图
+Side profile view. The [product] photographed from a clean 90-degree side profile, showing [what's visible from side]. Strong side lighting from the left creating dramatic depth.
+
+# 仰视图
+Dramatic low-angle hero shot. The [product] photographed from a very low angle looking upward, making [tower/building] appear tall and imposing. Strong upward lighting creating heroic dramatic shadows.
+
+# 微距特写
+Extreme close-up macro shot. Tight zoom on the [specific detail], showing [texture/mechanism/individual elements]. Shallow depth of field with the foreground in sharp focus and background slightly blurred. Warm directional side lighting highlighting surface texture.
+
+# 后侧角度
+Rear angled view. The [product] photographed from behind at a 45-degree rear angle, revealing [back details not visible from front]. This angle shows construction details not visible from the front.
+```
+
 ### 字体搭配规则
 
 - 主标题用衬线体（如 Didot），副标题和正文用无衬线体（如 SF Pro Display）。
@@ -463,6 +518,7 @@ python3 scripts/generate_image.py --prompt "..." --size 1:1 --resolution 2k
 - 负面约束覆盖常见失败点。
 - 输出和文件里没有 API key 或私密凭据。
 - 已应用 GPT-Image-2 铁律：hex 颜色、数字占比、显式留白、否定清单、平台预留空间。
+- 多图任务已分配不同角度和景别，无连续 3 张相同角度，全景图占比 ≤ 40%。
 - 出图后提醒用户放大 200% 逐字核对中文笔画。
 
 ---
@@ -478,6 +534,7 @@ python3 scripts/generate_image.py --prompt "..." --size 1:1 --resolution 2k
 | 产品太大或太小 | 没指定占比 | 写具体百分比：`产品占画面 38%` |
 | 画面填满无留白 | 没写留白要求 | 显式声明：`留白至少 50%` |
 | 连续多张视觉疲劳 | 背景色全部一样 | 交替使用 2-3 种背景色 |
+| 全套图角度雷同 | AI 默认生成正面 3/4 角度，不指定就千篇一律 | 每张 Prompt 显式写明角度关键词；主图 ≥3 种角度，详情页 ≥4 种，穿插特写/微距 |
 | 衣服/3C 翻车率高 | 对面料垂坠感、人体比例、接口按键细节要求太高 | 优先测护肤品、家居、食品等稳定品类；衣服用参考图 `--image` 提升一致性 |
 
 ---
