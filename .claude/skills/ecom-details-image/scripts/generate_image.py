@@ -243,7 +243,7 @@ def build_sync_payload(args: argparse.Namespace, prompt: str, model: str) -> dic
     if args.quality:
         payload["quality"] = args.quality
     if args.image:
-        payload["image"] = encode_image_object(args.image)
+        payload["image_urls"] = [encode_image_data_uri(args.image)]
     return payload
 
 
